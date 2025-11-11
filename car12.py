@@ -23,15 +23,11 @@ class Car:
             # 1/3 -> pivot (other side) to correct
             # 7  -> stop (intersection/end)
             if infrared_value == 2:
-                self.motor.set_motor_model(800, 800, 800, 800)
-            elif infrared_value == 4:
+                self.motor.set_motor_model(700, 700, 700, 700)
+            elif infrared_value == 4 or 6:
                 self.motor.set_motor_model(-1500, -1500, 2500, 2500)
-            elif infrared_value == 6:
-                self.motor.set_motor_model(-2000, -2000, 4000, 4000)
-            elif infrared_value == 1:
+            elif infrared_value == 1 or 3 :
                 self.motor.set_motor_model(2500, 2500, -1500, -1500)
-            elif infrared_value == 3:
-                self.motor.set_motor_model(4000, 4000, -2000, -2000)
             elif infrared_value == 7:
                 self.motor.set_motor_model(0, 0, 0, 0)
             else:

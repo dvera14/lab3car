@@ -1,54 +1,98 @@
-from ultrasonic import Ultrasonic       # not used here, but kept for consistency
+from ultrasonic import Ultrasonic
 from motor import Ordinary_Car
-from servo import Servo                 # not used here
+from servo import Servo
 from infrared import Infrared
-from adc import ADC                     # not used here
+from adc import ADC
+from led import Led
+from buzzer import Buzzer
+
+
 import time
+import math
 
-class Car:
-    def __init__(self):
-        self.motor = Ordinary_Car()
-        self.infrared = Infrared()
-        self.car_record_time = 0.0
+# --- Hardware initialization ---
+PWM = Ordinary_Car()
+led = Led()
+buzzer = Buzzer()
+servo = Servo()
+ultrasonic = Ultrasonic()
+IF = Infrared()
 
-    def mode_infrared(self):
-        # Limit read/update rate a little bit
-        if (time.time() - self.car_record_time) > 0.02:
-            self.car_record_time = time.time()
-            infrared_value = self.infrared.read_all_infrared()
+# --- State variables ---
+driving_state = 1
+stopping_state = 0
+scanning_state = 0
 
-            # Basic mapping from your example:
-            # 2  -> straight
-            # 4/6 -> pivot (one side) to correct
-            # 1/3 -> pivot (other side) to correct
-            # 7  -> stop (intersection/end)
-            if infrared_value == 2:
-                self.motor.set_motor_model(700, 700, 700, 700)
-            elif infrared_value == 4 or 6:
-                self.motor.set_motor_model(-1500, -1500, 2500, 2500)
-            elif infrared_value == 1 or 3 :
-                self.motor.set_motor_model(2500, 2500, -1500, -1500)
-            elif infrared_value == 7:
-                self.motor.set_motor_model(0, 0, 0, 0)
-            else:
-                # If sensors see nothing (e.g., 0), just slow forward:
-                self.motor.set_motor_model(1000, 1000, 1000, 1000)
-
-    def close(self):
-        try:
-            self.motor.set_motor_model(0, 0, 0, 0)
-        except:
-            pass
-
-def test_car_infrared():
-    car = Car()
+while True:
     try:
-        while True:
-            car.mode_infrared()
-            time.sleep(0.005)
-    except KeyboardInterrupt:
-        car.close()
-        print("\nEnd of program")
+        # ===================== DRIVING / LINE-FOLLOWING =====================
+        if driving_state == 1:
+            # Infrared line-following logic (unchanged)
+            infrared_value = IF.read_all_infrared()
+            # print("infrared_value: " + str(infrared_value))
 
-if __name__ == '__main__':
-    test_car_infrared()
+            if infrared_value == 2:
+                PWM.set_motor_model(2000, -800, 2000, -800)
+            elif infrared_value == 4:
+                PWM.set_motor_model(-1500, -1500, 2500, 2500)
+            elif infrared_value == 6:
+                PWM.set_motor_model(-2000, -2000, 4000, 4000)
+            elif infrared_value == 1:
+                PWM.set_motor_model(2500, 2500, -1500, -1500)
+            elif infrared_value == 3:
+                PWM.set_motor_model(4000, 4000, -2000, -2000)
+            elif infrared_value == 7:
+                PWM.set_motor_model(0, 0, 0, 0)
+
+            # LED rainbow while driving (from your obstacle code)
+            led.ledIndex(0x04, 255, 255, 0)     # Red
+            led.ledIndex(0x04, 255, 255, 0)   # Orange
+            led.ledIndex(0x04, 255, 255, 0)   # Yellow
+            led.ledIndex(0x04, 255, 255, 0)     # Green
+            led.ledIndex(0x04, 255, 255, 0)   # Cyan-blue
+            led.ledIndex(0x04, 255, 255, 0)     # Blue
+            led.ledIndex(0x04, 255, 255, 0)   # Purple
+            led.ledIndex(0x04, 255, 255, 0) # White
+
+            # Ultrasonic obstacle check (from your obstacle code)
+            distance = ultrasonic.get_distance()
+
+            if distance <= 35:
+                PWM.set_motor_model(0, 0, 0, 0)
+                driving_state = 0
+                stopping_state = 1
+                scanning_state = 0
+
+                buzzer.set_state(True)
+                time.sleep(1)
+                buzzer.set_state(False)
+
+                led.colorBlink(0)
+
+        # ===================== STOPPING STATE =====================
+        if stopping_state == 1:
+            PWM.set_motor_model(0, 0, 0, 0)
+            time.sleep(2)
+
+            driving_state = 0
+            stopping_state = 0
+            scanning_state = 1
+
+        # ===================== SCANNING / AVOIDANCE =====================
+        if scanning_state == 1:
+            distance = ultrasonic.get_distance()
+
+            if distance <= 35:
+                PWM.set_motor_model(1500, 1500, -1500, -1500)
+                time.sleep(1)
+                PWM.set_motor_model(0, 0, 0, 0)
+
+            if distance >= 35:
+                scanning_state = 0
+                driving_state = 1
+                stopping_state = 0
+
+    except KeyboardInterrupt:
+        PWM.set_motor_model(0, 0, 0, 0)
+        print("\nEnd of program")
+        break

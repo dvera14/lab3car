@@ -6,7 +6,6 @@ from adc import ADC
 from led import Led
 from buzzer import Buzzer
 
-
 import time
 import math
 
@@ -18,14 +17,15 @@ servo = Servo()
 ultrasonic = Ultrasonic()
 IF = Infrared()
 
-# --- State variables ---
-driving_state = 1
-stopping_state = 0
-scanning_state = 0
-
 TURN_TIME = 0.55
 TURN_CHECK_DT = 0.02
 PROBE_TIME = 0.2
+
+# ---------- added: obstacle hysteresis + bypass time ----------
+STOP_CM = 35         # trigger stop/avoid at or below this
+CLEAR_CM = 40        # must exceed this to resume (hysteresis)
+BYPASS_TIME = 0.60   # forward time alongside obstacle during avoid
+# --------------------------------------------------------------
 
 def indicate_line_position(sensor_value: int):
     """Show LED color based on which infrared sensors currently see the line."""
@@ -41,7 +41,6 @@ def indicate_line_position(sensor_value: int):
     r, g, b = color_map.get(sensor_value, (255, 0, 255))
     led.ledIndex(0x04, r, g, b)
 
-
 def take_right_turn():
     """Pivot right at a crossroad until the center sensor finds the new line."""
     turn_start = time.time()
@@ -56,67 +55,67 @@ def take_right_turn():
     time.sleep(PROBE_TIME)
     PWM.set_motor_model(0, 0, 0, 0)
 
+# ---------- added: robust ultrasonic read (works if spikes/None) ----------
+def distance_cm():
+    vals = []
+    for _ in range(3):
+        try:
+            d = ultrasonic.get_distance()
+            if d and d > 0:
+                vals.append(d)
+        except:
+            pass
+        time.sleep(0.01)
+    if not vals:
+        return None
+    vals.sort()
+    return vals[len(vals)//2]
+# -------------------------------------------------------------------------
+
 while True:
     try:
         # ===================== DRIVING / LINE-FOLLOWING =====================
-        if driving_state == 1:
-            # Infrared line-following logic (unchanged)
-            infrared_value = int(IF.read_all_infrared())
-            # print("infrared_value: " + str(infrared_value))
+        infrared_value = int(IF.read_all_infrared())
+        # print("infrared_value: " + str(infrared_value))
 
-            if infrared_value == 2:
-                PWM.set_motor_model(2000, -800, 2000, -800)
-            elif infrared_value == 4:
-                PWM.set_motor_model(-1500, -1500, 2500, 2500)
-            elif infrared_value == 6:
-                PWM.set_motor_model(-2000, -2000, 4000, 4000)
-            elif infrared_value == 1:
-                PWM.set_motor_model(2500, 2500, -1500, -1500)
-            elif infrared_value == 3:
-                PWM.set_motor_model(4000, 4000, -2000, -2000)
-            elif infrared_value == 7:
-                take_right_turn()
-                continue
+        if infrared_value == 2:
+            PWM.set_motor_model(2000, -800, 2000, -800)
+        elif infrared_value == 4:
+            PWM.set_motor_model(-1500, -1500, 2500, 2500)
+        elif infrared_value == 6:
+            PWM.set_motor_model(-2000, -2000, 4000, 4000)
+        elif infrared_value == 1:
+            PWM.set_motor_model(2500, 2500, -1500, -1500)
+        elif infrared_value == 3:
+            PWM.set_motor_model(4000, 4000, -2000, -2000)
+        elif infrared_value == 7:
+            take_right_turn()
+            continue
+        # ---------- added: search-on-loss so it doesn't stall ----------
+        elif infrared_value == 0:
+            # gentle left spin to re-acquire line
+            PWM.set_motor_model(-1500, -1500, 2500, 2500)
+        # ----------------------------------------------------------------
 
-            indicate_line_position(infrared_value)
+        indicate_line_position(infrared_value)
 
-            # Ultrasonic obstacle check (from your obstacle code)
-            distance = ultrasonic.get_distance()
-
-            if distance <= 35:
-                PWM.set_motor_model(0, 0, 0, 0)
-                driving_state = 0
-                stopping_state = 1
-                scanning_state = 0
-
-                buzzer.set_state(True)
-                time.sleep(1)
-                buzzer.set_state(False)
-
-                led.colorBlink(0)
-
-        # ===================== STOPPING STATE =====================
-        if stopping_state == 1:
+        # Ultrasonic obstacle check (stop-and-wait; no avoidance drive)
+        distance = distance_cm()
+        if (distance is not None) and (distance <= STOP_CM):
             PWM.set_motor_model(0, 0, 0, 0)
-            time.sleep(2)
 
-            driving_state = 0
-            stopping_state = 0
-            scanning_state = 1
+            buzzer.set_state(True)
+            time.sleep(1)
+            buzzer.set_state(False)
 
-        # ===================== SCANNING / AVOIDANCE =====================
-        if scanning_state == 1:
-            distance = ultrasonic.get_distance()
+            led.colorBlink(0)
 
-            if distance <= 35:
-                PWM.set_motor_model(1500, 1500, -1500, -1500)
-                time.sleep(1)
-                PWM.set_motor_model(0, 0, 0, 0)
-
-            if distance >= 35:
-                scanning_state = 0
-                driving_state = 1
-                stopping_state = 0
+            # hold here until obstacle is cleared (hysteresis to restart)
+            while True:
+                distance = distance_cm()
+                if (distance is not None) and (distance >= CLEAR_CM):
+                    break
+                time.sleep(0.1)
 
     except KeyboardInterrupt:
         PWM.set_motor_model(0, 0, 0, 0)

@@ -1,0 +1,66 @@
+```mermaid
+stateDiagram-v2
+    %%{init: {'themeVariables': { 'fontSize': '24px'}}}%%
+    direction LR
+
+    [*] --> DRIVING
+
+    %% --- DRIVING / LINE FOLLOWING ---
+    state DRIVING {
+        [*] --> FOLLOW
+        FOLLOW: Line-following using IR
+        note right of FOLLOW
+          IR bits (from IF.read_all_infrared):\n          1=Left, 2=Center, 4=Right;\n          3=Left+Center, 6=Center+Right, 7=All, 0=None
+        end note
+
+        %% self-loops represent motor commands per IR pattern
+        FOLLOW --> FOLLOW: IR==2 / set motors (2000,-800,2000,-800); indicate_line_position(2)
+        FOLLOW --> FOLLOW: IR==4 / set motors (-1500,-1500,2500,2500); indicate_line_position(4)
+        FOLLOW --> FOLLOW: IR==6 / set motors (-2000,-2000,4000,4000); indicate_line_position(6)
+        FOLLOW --> FOLLOW: IR==1 / set motors (2500,2500,-1500,-1500); indicate_line_position(1)
+        FOLLOW --> FOLLOW: IR==3 / set motors (4000,4000,-2000,-2000); indicate_line_position(3)
+        FOLLOW --> RIGHT_TURN: IR==7 / take_right_turn(); indicate_line_position(7)
+        FOLLOW --> FOLLOW: IR==0 / (no explicit motor change); indicate_line_position(0)
+
+        state RIGHT_TURN {
+            [*] --> PIVOT
+            PIVOT: Pivot right up to TURN_TIME\nuntil center sensor sees line
+            PIVOT --> PROBE: (turn_value & 0b010) OR timeout
+            PROBE: Short forward PROBE_TIME
+            PROBE --> [*]
+        }
+        RIGHT_TURN --> FOLLOW
+    }
+
+    %% --- OBSTACLE HANDLING ---
+    DRIVING --> STOPPING: ultrasonic.distance <= 35
+
+    state STOPPING {
+        [*] --> HALT
+        HALT: entry/ stop motors;\n       buzzer ON 1s; buzzer OFF;\n       led.colorBlink(0);\n       wait 2s
+        HALT --> [*]
+    }
+    STOPPING --> SCANNING
+
+    state SCANNING {
+        [*] --> CHECK
+        CHECK: distance = ultrasonic.get_distance()
+        CHECK --> BACKUP: distance <= 35
+        BACKUP: reverse 1s; stop
+        BACKUP --> CHECK
+        CHECK --> CLEAR: distance >= 35
+        CLEAR --> [*]
+    }
+
+    SCANNING --> DRIVING: distance >= 35
+
+    %% no terminal end; loop runs forever until KeyboardInterrupt
+```
+
+**Legend / Notes**
+
+* **States**: `DRIVING`, `STOPPING`, `SCANNING`; `RIGHT_TURN` is a transient substate inside `DRIVING` when `IR==7` (all sensors on, i.e., intersection/crossing).
+* **IR self-loops in `FOLLOW`** mirror the exact motor commands in your code for values 1,2,3,4,6.
+* When **IR==0** (no line), the diagram shows a self-loop with *no explicit motor update* (matching your current code). The LED turns red via `indicate_line_position(0)`.
+* **Obstacle logic**: `DRIVING → STOPPING` when distance ≤ 35 cm. After a 2 s halt (with buzzer + LED), flow goes to `SCANNING`. In `SCANNING`, if distance is still ≤ 35, the car backs up for 1 s and checks again; once distance ≥ 35, it returns to `DRIVING`.
+* Servo is initialized but not used in the current code path; it is omitted from the diagram.

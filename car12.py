@@ -27,6 +27,12 @@ CLEAR_HITS_TO_GO = 4        # consecutive clear reads before resuming
 BYPASS_TIME = 0.60   # unused now (legacy avoid param)
 # ----------------------------------------------------
 
+def set_all_leds(r: int, g: int, b: int):
+    """Set all LEDs to the same color."""
+    for idx in range(8):  # indices 0-7 on most strips
+        led.ledIndex(idx, r, g, b)
+
+
 def indicate_line_position(sensor_value: int):
     """Show LED color based on which infrared sensors currently see the line."""
     color_map = {
@@ -39,7 +45,7 @@ def indicate_line_position(sensor_value: int):
         7: (255, 255, 255) # all sensors on (intersection/crossing)
     }
     r, g, b = color_map.get(sensor_value, (255, 0, 255))
-    led.ledIndex(0x04, r, g, b)
+    set_all_leds(r, g, b)
 
 def take_right_turn():
     """Pivot right at a crossroad until the center sensor finds the new line."""
@@ -79,8 +85,8 @@ while True:
         # print("infrared_value: " + str(infrared_value))
 
         if infrared_value == 2:
-            # forward commit to carry through bends, still gentle correction
-            PWM.set_motor_model(1200, -900, 1200, -900)
+            # forward commit to carry through bends, quicker cruise
+            PWM.set_motor_model(1700, -1400, 1700, -1400)
         elif infrared_value == 4:
             PWM.set_motor_model(-1200, -1200, 1200, 1200)
         elif infrared_value == 6:
@@ -113,6 +119,7 @@ while True:
             PWM.set_motor_model(0, 0, 0, 0)
             take_right_turn._obstacle_hits = 0
             led.colorBlink(0)
+            set_all_leds(255, 0, 0)
 
             # hold here until obstacle is cleared (hysteresis to restart)
             clear_hits = 0

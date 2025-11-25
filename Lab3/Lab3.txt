@@ -60,7 +60,7 @@ def take_right_turn():
     time.sleep(PROBE_TIME)
     PWM.set_motor_model(0, 0, 0, 0)
 
-# added: robust ultrasonic read (works if spikes/None)
+# Robust ultrasonic read (works if spikes/None)
 def distance_cm():
     vals = []
     for _ in range(3):
@@ -97,7 +97,7 @@ while True:
         elif infrared_value == 7:
             take_right_turn()
             continue
-        #  added: search-on-loss so it doesn't stall
+        # Search-on-loss so it doesn't stall
         elif infrared_value == 0:
             # gentle left spin to re-acquire line
             PWM.set_motor_model(-1200, -1200, 1400, 1400)

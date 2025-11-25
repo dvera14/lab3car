@@ -62,11 +62,3 @@ stateDiagram-v2
 
     %% No terminal [*]; loop runs until KeyboardInterrupt
 ```
-
-**Key changes vs. previous diagram**
-
-* Added **LOST_LINE** recovery (IR==0) that spins gently until any sensor sees the line.
-* Replaced separate STOPPING/SCANNING states with a single **OBSTACLE_HOLD** that blocks until cleared, plus **debounce pseudo-states** (**OBSTACLE_DEBOUNCE** and **CLEAR_DEBOUNCE**) matching the consecutive-read counters.
-* **RIGHT_TURN** remains a transient substate invoked on intersections (IR==7), but motor values/timing updated.
-
-**Constants reflected:** `STOP_CM=30`, `CLEAR_CM=45`, `OBSTACLE_HITS_TO_STOP=3`, `CLEAR_HITS_TO_GO=

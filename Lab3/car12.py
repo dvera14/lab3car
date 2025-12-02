@@ -4,7 +4,6 @@ from servo import Servo
 from infrared import Infrared
 from adc import ADC
 from led import Led
-from buzzer import Buzzer
 
 import time
 import math
@@ -12,7 +11,6 @@ import math
 # --- Hardware initialization ---
 PWM = Ordinary_Car()
 led = Led()
-buzzer = Buzzer()
 servo = Servo()
 ultrasonic = Ultrasonic()
 IF = Infrared()
@@ -21,18 +19,16 @@ TURN_TIME = 0.55
 TURN_CHECK_DT = 0.02
 PROBE_TIME = 0.2
 
-# ---------- obstacle hysteresis + debounce ----------
+# obstacle hysteresis + debounce 
 STOP_CM = 30         # trigger stop/avoid at or below this
 CLEAR_CM = 45        # must exceed this to resume (hysteresis)
 OBSTACLE_HITS_TO_STOP = 3   # consecutive obstacle reads before stopping
 CLEAR_HITS_TO_GO = 4        # consecutive clear reads before resuming
 BYPASS_TIME = 0.60   # unused now (legacy avoid param)
-# ----------------------------------------------------
-
 
 def set_all_leds(r: int, g: int, b: int):
-    """Set all LEDs (indices 0-7) to the same color."""
-    for idx in range(8):
+    """Set all LEDs to the same color."""
+    for idx in range(8):  # indices 0-7 on most strips
         led.ledIndex(idx, r, g, b)
 
 
@@ -50,22 +46,21 @@ def indicate_line_position(sensor_value: int):
     r, g, b = color_map.get(sensor_value, (255, 0, 255))
     set_all_leds(r, g, b)
 
-
 def take_right_turn():
     """Pivot right at a crossroad until the center sensor finds the new line."""
     turn_start = time.time()
-    PWM.set_motor_model(2800, 2800, -2300, -2300)
+    PWM.set_motor_model(1700, 1700, -1200, -1200)
     while time.time() - turn_start < TURN_TIME:
         turn_value = int(IF.read_all_infrared())
         indicate_line_position(turn_value)
         if turn_value & 0b010:
             break
         time.sleep(TURN_CHECK_DT)
-    PWM.set_motor_model(2200, 2200, 2200, 2200)
+    PWM.set_motor_model(1000, 1000, 1000, 1000)
     time.sleep(PROBE_TIME)
     PWM.set_motor_model(0, 0, 0, 0)
 
-# ---------- robust ultrasonic read (filters spikes/None) ----------
+# added: robust ultrasonic read (works if spikes/None)
 def distance_cm():
     vals = []
     for _ in range(3):
@@ -80,30 +75,32 @@ def distance_cm():
         return None
     vals.sort()
     return vals[len(vals)//2]
-# -----------------------------------------------------------------
 
+# MAIN LOOP 
 while True:
     try:
-        # ===================== DRIVING / LINE-FOLLOWING =====================
+        #  DRIVING / LINE-FOLLOWING 
         infrared_value = int(IF.read_all_infrared())
+        # print("infrared_value: " + str(infrared_value))
 
         if infrared_value == 2:
-            # forward commit to carry through bends, steady cruise
-            PWM.set_motor_model(800, 800, 800, 800)
+            # forward commit to carry through bends, quicker cruise
+            PWM.set_motor_model(1700, -1400, 1700, -1400)
         elif infrared_value == 4:
-            PWM.set_motor_model(-2200, -2200, 2800, 2800)
+            PWM.set_motor_model(-1200, -1200, 1200, 1200)
         elif infrared_value == 6:
-            PWM.set_motor_model(-2400, -2400, 3000, 3000)
+            PWM.set_motor_model(-1200, -1200, 1200, 1200)
         elif infrared_value == 1:
-            PWM.set_motor_model(2500, 2500, -2100, -2100)
+            PWM.set_motor_model(1200, 1200, -1200, -1200)
         elif infrared_value == 3:
-            PWM.set_motor_model(2700, 2700, -2300, -2300)
+            PWM.set_motor_model(1200, 1200, -1200, -1200)
         elif infrared_value == 7:
             take_right_turn()
             continue
+        #  added: search-on-loss so it doesn't stall
         elif infrared_value == 0:
-            # stronger left spin to re-acquire line
-            PWM.set_motor_model(-2000, -2000, 2400, 2400)
+            # gentle left spin to re-acquire line
+            PWM.set_motor_model(-1200, -1200, 1400, 1400)
 
         indicate_line_position(infrared_value)
 
@@ -119,10 +116,7 @@ while True:
         if take_right_turn._obstacle_hits >= OBSTACLE_HITS_TO_STOP:
             PWM.set_motor_model(0, 0, 0, 0)
             take_right_turn._obstacle_hits = 0
-            buzzer.set_state(True)
-            time.sleep(1)  # keep buzzer on for 1s
             led.colorBlink(0)
-            buzzer.set_state(False)
             set_all_leds(255, 0, 0)
 
             # hold here until obstacle is cleared (hysteresis to restart)
@@ -142,5 +136,3 @@ while True:
         PWM.set_motor_model(0, 0, 0, 0)
         print("\nEnd of program")
         break
-
-

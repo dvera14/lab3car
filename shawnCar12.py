@@ -75,7 +75,7 @@ def avoid_obstacle():
     drive_for(1600, 1600, -1800, -1800, AVOID_FINAL_CORRECT_TIME)
     drive_for(0,0,0,0, STOP_TIME)
     # Long straight to settle back into the original lane
-    drive_for(900, 900, 900, 900, 0.70)
+    drive_for(900, 900, 900, 900, 1.0)
     drive_for(0,0,0,0, STOP_TIME)
     drive_for(-1600, -1600, 1800, 1800, AVOID_FINAL_CORRECT_TIME)
     drive_for(0,0,0,0, STOP_TIME)

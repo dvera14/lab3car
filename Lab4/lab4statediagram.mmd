@@ -1,0 +1,73 @@
+stateDiagram-v2
+    [*] --> MainLoop
+
+    state MainLoop {
+        direction TB
+        
+        %% Default State
+        DrivingStraight: <b>Driving Straight</b>\n(Motors 800)
+        
+        %% Check Sensors Loop
+        [*] --> DrivingStraight
+        DrivingStraight --> CheckIR
+        
+        state CheckIR {
+            direction TB
+            [*] --> ReadSensors
+            ReadSensors --> LineBlocked: IR == 7 (All Black)
+            ReadSensors --> CheckAvoidanceFlag: IR != 7
+        }
+        
+        state LineBlocked {
+            [*] --> StopMotors
+            StopMotors --> WaitForClearance: Check Distance > 20cm
+            WaitForClearance --> [*]: Path Cleared
+        }
+        
+        %% Decision Node
+        state CheckAvoidanceFlag <<choice>>
+
+        %% STATE: Recovery (Driving but ignoring new obstacles)
+        state RecoveryMode {
+            [*] --> CheckClearance
+            %% FIXED: Note is now attached to the specific state
+            note right of CheckClearance: Car drives straight<br/>ignoring obstacles<br/>until path clears.
+            CheckClearance --> ResetFlag: Distance > 20cm
+            ResetFlag --> [*]: Set in_avoidance = False
+            CheckClearance --> [*]: Still Blocked
+        }
+
+        %% STATE: Normal Obstacle Check
+        state NormalObstacleCheck {
+            [*] --> MeasureDist
+            MeasureDist --> IncrementHits: Dist <= 26cm
+            MeasureDist --> ResetHits: Dist > 26cm
+            
+            IncrementHits --> TriggerAvoidance: Hits >= 3
+            IncrementHits --> [*]: Hits < 3
+            ResetHits --> [*]
+        }
+        
+        %% Wiring the choices
+        CheckAvoidanceFlag --> RecoveryMode: in_avoidance is True
+        CheckAvoidanceFlag --> NormalObstacleCheck: in_avoidance is False
+        
+        %% Loop backs
+        LineBlocked --> DrivingStraight
+        RecoveryMode --> DrivingStraight
+        NormalObstacleCheck --> DrivingStraight
+    }
+
+    %% STATE: Avoidance Maneuver (Blocking)
+    state TriggerAvoidance {
+        direction TB
+        [*] --> StopAndBeep
+        StopAndBeep --> SteerLeft: Turn Out
+        SteerLeft --> DrivePast: Go Straight
+        DrivePast --> SteerRight: Merge Back
+        SteerRight --> FinalCorrection: Align
+        FinalCorrection --> SetFlagTrue
+        SetFlagTrue --> MainLoop: Return (in_avoidance = True)
+    }
+
+    NormalObstacleCheck --> TriggerAvoidance
